@@ -17,7 +17,6 @@
 
 static char c = '0';
 
-
 //Events & message-codes
 #define I2C_TRIGGER 50
 #define I2C_TRIGACK_RCV 51
@@ -30,18 +29,14 @@ static char c = '0';
 #define GPIO_BUTTON 71
 #define GPIO_BUTTON2 72
 
+#define TIMEOUT 99
+
 /////////////////////////////////////
 // Enter/exit functions
-void turnOnPiSendI2CTrigger()
+void turnOnPi()
 {
-  Serial.println("func:turnOnSendI2CTrigger");
+  Serial.println("func:turnOnPi");
 }
-
-void sendI2CTrigger()
-{
-  Serial.println("func:sendI2CTrigger");
-}
-
 
 
 void shutDownPi()
@@ -49,14 +44,35 @@ void shutDownPi()
   Serial.println("func:shutdownPi");
 }
 
+void errorMessage()
+{
+  Serial.println("In a bad error-state. RPI not responding.");
+}
+
 
 ////////////////////////////////////
 // States  State(void (*on_enter)(), void (*on_state)(), void (*on_exit)());
-State state_waiting(NULL, NULL, NULL);
-State state_waitfortriggerack(&turnOnPiSendI2CTrigger, NULL, NULL);
-State state_waitforsoundplaying(NULL, NULL, &shutDownPi);
-
+State state_waiting(NULL, NULL, &turnOnPi);
 Fsm fsm(&state_waiting);
+
+void sendI2CTrigger()
+{
+  static int sendTriggerCount = 0;
+  Serial.print("func:sendI2CTrigger->");
+  Serial.println(sendTriggerCount);
+  sendTriggerCount++;
+  if (sendTriggerCount > 10) {
+    sendTriggerCount = 0;
+    fsm.trigger(TIMEOUT);
+  }
+}
+
+
+State state_waitfortriggerack(&sendI2CTrigger, NULL, NULL);
+State state_waitforsoundplaying(NULL, NULL, &shutDownPi);
+State state_rpinotworking(&errorMessage, NULL, NULL);
+
+
 
 ////////////////////////////////
 // Transition functions
@@ -134,8 +150,9 @@ void setup() {
 
   fsm.add_transition(&state_waiting, &state_waitfortriggerack,
                      GPIO_TRIGGER, NULL);
-  fsm.add_timed_transition(&state_waitfortriggerack, &state_waiting, 3000, &sendI2CTrigger);
+  fsm.add_timed_transition(&state_waitfortriggerack, &state_waitfortriggerack, 3000, NULL);
 
+  fsm.add_transition(&state_waitfortriggerack, &state_rpinotworking, TIMEOUT, NULL);
   fsm.add_transition(&state_waitfortriggerack, &state_waitforsoundplaying, I2C_TRIGACK_RCV, NULL);
   fsm.add_transition(&state_waitforsoundplaying, &state_waiting, I2C_TRIGDONE_RCV, NULL);
   
