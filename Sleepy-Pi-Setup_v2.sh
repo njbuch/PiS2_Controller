@@ -200,6 +200,20 @@ echo 'Installing PlatformIO...'
 
 sudo pip2.7 -q install -U platformio RPi.GPIO
 
+
+## Setup PIGPIO
+
+echo 'Installing PIGPIO'
+cd
+rm pigpio.zip
+sudo rm -rf PIGPIO
+wget abyz.me.uk/rpi/pigpio/pigpio.zip
+unzip pigpio.zip
+cd PIGPIO
+make
+sudo make install
+
+
 ##-------------------------------------------------------------------------------------------------
 echo "Sleepy Pi setup complete!"
 assert "Would you like to reboot now? y/n"
@@ -210,3 +224,5 @@ if [ $? == 1 ]; then
 fi
 exit 0
 ##-------------------------------------------------------------------------------------------------
+
+
