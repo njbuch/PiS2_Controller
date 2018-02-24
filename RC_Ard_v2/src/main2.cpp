@@ -225,15 +225,14 @@ void loop() {
   delay(500);               // wait for a second
   digitalWrite(led_pin, LOW);    // turn the LED off by making the voltage LOW
   delay(200);               // wait for a second
-  Serial.print("Hi:");
-  Serial.print(c);
+
   if (c2++ > 10) {
-    Serial.print("Now writing...");
+    Serial.print(".");
     Serial.print(c);
-    Wire.beginTransmission(7); // transmit to device #
-    Wire.write("c is ");        // sends five bytes
-    Wire.write(c);              // sends one byte
-    Wire.endTransmission();    // stop transmitting
+    // Wire.beginTransmission(7); // transmit to device #
+    // Wire.write("c is ");        // sends five bytes
+    // Wire.write(c);              // sends one byte
+    // Wire.endTransmission();    // stop transmitting
     c++;
     c2 = 0;
   }
