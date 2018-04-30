@@ -189,8 +189,9 @@ void receiveEvent(int numBytes)
     case MSG_READY:
       fsmi2c.trigger(CMD_RDY_RECEIVED);
       break;
-    case I2C_TRIGDONE_RCV:
-      fsm.trigger(I2C_TRIGDONE_RCV);
+    case MSG_OK:
+      Serial.print("OK received, now relax!");
+      fsmi2c.trigger(CMD_OK_RECEIVED);
       break;
     default:
       break;

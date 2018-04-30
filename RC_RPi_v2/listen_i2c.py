@@ -48,15 +48,21 @@ class RPI_Controller(object):
             self.rdy_received()
         if data != MSG_READY:
             self.not_ready()
+        return
 
     def on_enter_state2(self):
         print("Transition: on_enter_state2.")
         writeNumber(MSG_READY)
+        print("Er vi her?")
         while True:
+            print("Maerkelig linie")
             if (not GPIO.input(25)):
                print("PIN 25 was low and now proceeding!")
                self.pinlow_received()
+               print("Efter pinlow")
+               break
             time.sleep(0.1)
+        return
 
     def on_enter_state3(self):
         print("Transition: on_enter_state3.")
@@ -66,6 +72,7 @@ class RPI_Controller(object):
         self.todo_command = readNumber()
         print("Command was:", self.todo_command)
         self.cmd_received()
+        return
 
     def on_enter_state4(self):
         print("The state 4 here", self.todo_command)
@@ -80,9 +87,11 @@ class RPI_Controller(object):
 
         writeNumber(MSG_OK) ## this is the confirmation of all went ok!
         self.done()
+        return
 
     def on_enter_sleep(self):
         print("Now sleeping....")
+        return
 
     def error_transition(self):
         print("Moving to sleep state because of error")
