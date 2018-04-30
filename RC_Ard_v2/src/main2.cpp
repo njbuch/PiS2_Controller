@@ -93,7 +93,7 @@ Fsm fsm(&state_contr_waiting);
 State state_i2c_waiting_pioff(NULL, NULL, &turnOnPi);
 Fsm fsmi2c(&state_i2c_waiting_pioff);
 
-int CmdToSend = 0;
+int CmdToSend = -1;
 
 void sendI2CTrigger()
 {
@@ -149,12 +149,20 @@ void I2C_RepDone_Rcv()
   Serial.println("func:I2C_RepDone_Rcv");
 }
 
-
-// this function is registered as an event, see setup() 
+int QuickReply = 255;
 void requestEvent() 
 {
-  // Serial.print("requestEvent!");
-  // Wire.write(MSG_READY);
+  Wire.write(QuickReply);
+  Serial.print("requestEvent");
+  Serial.println(QuickReply);
+  fsmi2c.trigger(CMD_REQUEST);
+}
+// this function is registered as an event, see setup() 
+void requestEventOLD() 
+{
+   Wire.write(MSG_READY);
+   Serial.print("requestEvent!");
+
   fsmi2c.trigger(CMD_REQUEST);
 
   // byte output[] = {0x01,0x02,0x03,0x04};  // This is just some sample data for testing
@@ -195,31 +203,31 @@ void receiveEvent(int numBytes)
 void i2c_waiting_to_onning()
 {
    Serial.println("\n\nTransition:i2c_waiting_to_onning.\n");
-   digitalWrite(messagesignal_pin, HIGH);  
+   digitalWrite(messagesignal_pin, HIGH);
+   QuickReply = MSG_READY;
    Serial.println("MessagePin set to high. Hoping for a i2c read request.\n");
 }
 
 void i2c_onning_to_readying()
 {
-   Wire.write(MSG_READY);
-   Serial.println("\n\nTransition:i2c_onning_to_readying. Now sending MSG_READY!\n");
-
-
+   //Wire.write(MSG_READY);
+   Serial.println("\n\nTransition:i2c_onning_to_readying. Now sent MSG_READY!\n");
 }
 
 void i2c_readying_to_confirming()
 {
    Serial.println("\n\nTransition:i2c_readying_to_confirming.\n");
+   QuickReply = CmdToSend;
    digitalWrite(messagesignal_pin, LOW);  
    Serial.println("MessagePin set to LOW. Hoping for a i2c read request again.\n");
 }
 
 void i2c_confirming_to_commanding()
 {
+   // Wire.write(CmdToSend);
    Serial.println("\n\nTransition:i2c_confirming_to_commanding.\n");
-   Serial.print("\nNow sending:");
+   Serial.print("\nNow sent:");
    Serial.print(CmdToSend);
-   Wire.write(CmdToSend);
 }
 
 void i2c_commanding_to_waiting()
@@ -315,14 +323,17 @@ void setup() {
 
 // the loop routine runs over and over again forever:
 int c2 = 0;
+bool toggle = true;
 void loop() {
   fsm.run_machine();
   fsmi2c.run_machine();
-  digitalWrite(led_pin, HIGH);   // turn the LED on (HIGH is the voltage level)
-  delay(5);               // wait for a second
-  digitalWrite(led_pin, LOW);    // turn the LED off by making the voltage LOW
-  delay(2);               // wait for a second
-
+ 
+ 
+  if (c++ > 100) {
+    toggle = !toggle;
+    digitalWrite(led_pin, toggle);   // turn the LED on (HIGH is the voltage level)
+    c = 0;
+  }
   if (c2++ > 1000) {
     Serial.print(".");
     // Serial.print(c);
@@ -330,7 +341,6 @@ void loop() {
     // Wire.write("c is ");        // sends five bytes
     // Wire.write(c);              // sends one byte
     // Wire.endTransmission();    // stop transmitting
-    c++;
     c2 = 0;
   }
 }

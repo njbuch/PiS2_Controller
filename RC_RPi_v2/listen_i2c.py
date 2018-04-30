@@ -22,8 +22,12 @@ logging.basicConfig(level=logging.DEBUG)
 MSG_OK = 11
 MSG_READY = 22
 
+CMD_TODO_TRIGGER = 50;
+CMD_TODO_REPORT = 51;
+
 ## The timeout is the waiting time until there is a timeout for a reply on the i2c bus
 WAIT = 600 #TODO set this timeout to 5
+
 
 
 """ Use the decorator to add extensions """
@@ -34,31 +38,51 @@ class CustomStateMachine(Machine):
 
 class RPI_Controller(object):
     def __init__(self):
-        self.entourage = 0
-        self.received_data = 0
+        self.todo_command = 0;
 
     def on_enter_waking(self):
         print("Transition: on_enter_waking.")
         data = readNumber()
         print("Data received on request:", data)
         if data == MSG_READY:
-            controller.rdy_received()
+            self.rdy_received()
         if data != MSG_READY:
-            controller.not_ready()
+            self.not_ready()
 
     def on_enter_state2(self):
+        print("Transition: on_enter_state2.")
         writeNumber(MSG_READY)
         while True:
             if (not GPIO.input(25)):
-               controller.pinlow_received()
+               print("PIN 25 was low and now proceeding!")
+               self.pinlow_received()
             time.sleep(0.1)
 
     def on_enter_state3(self):
+        print("Transition: on_enter_state3.")
+
         # send_data(self.received_data)
         print("Now reading the command!")
-        data = readNumber()
-        print("Command was:", data)
-        controller.cmd_received()
+        self.todo_command = readNumber()
+        print("Command was:", self.todo_command)
+        self.cmd_received()
+
+    def on_enter_state4(self):
+        print("The state 4 here", self.todo_command)
+        if self.todo_command == CMD_TODO_TRIGGER:
+            print("Here we will play the SOUND AND BLINK THE LIGHTS -------------------")
+            print("Now waiting 5 secs till finished!")
+            time.sleep(5)
+
+        if self.todo_command == CMD_TODO_REPORT:
+            print("Here we will do some repoting! -------------------")
+            time.sleep(5)
+
+        writeNumber(MSG_OK) ## this is the confirmation of all went ok!
+        self.done()
+
+    def on_enter_sleep(self):
+        print("Now sleeping....")
 
     def error_transition(self):
         print("Moving to sleep state because of error")
@@ -76,7 +100,7 @@ transitions = [['pin_high', 'sleep', 'waking'],
                ['rdy_received', 'waking', 'state2'],
                ['pinlow_received', 'state2', 'state3'],
                ['cmd_received', 'state3', 'state4'],
-               ['pin_low', 'state4', 'sleep'],
+               ['done', 'state4', 'sleep'],
                ['timeout1', 'state2', 'sleep'],
                ['timeout2', 'state3', 'sleep']]
 
@@ -84,9 +108,9 @@ controller = RPI_Controller()
 machine = CustomStateMachine(model=controller, states=states, transitions=transitions, initial='sleep')
 machine.add_transition('error', source='*', dest='sleep', before='error_transition')
 
+
 slaveAddress = 0x07
 messagePIN = 25
-
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(messagePIN, GPIO.IN)
@@ -97,18 +121,54 @@ def writeNumber(value):
     # bus.write_byte_data(address, 0, value)
     return -1
 
-def readNumber():
-    print("Read number....")
+def readNumber18():
+    print("Read number.... v18")
     number = 0;
+    readsx = 1;
+    print("Now reading")
+    number=i2c.read_byte(slaveAddress)
+    return number
+
+def readNumber():
+    # try up to 3 times on a failure
+    success = False
+    caught_exception = None
+    for _ in range(10):
+        try:
+            number=i2c.read_byte(slaveAddress)
+            # if we get here, we succeeded, so break out of the loop
+            success = True
+            break
+        except:
+            print "error!"
+            # wait a second for the retry
+            time.sleep(1)
+
+    if not success:
+        print "Failed after X retries!"
+    print("Number was", number)
+    return number
+
+def readNumber17():
+    print("Read number.... v17")
+    number = -1;
+    readsx = 1;
     while True:
         try:
             print("Now reading")
             number=i2c.read_byte(slaveAddress)
+            if not number == 0:
+                break
         except:
-            print("Exception!")
+            readsx += 1
+            print("Exception!", readsx)
             pass
+        print("try catch done")
         if not number == 0:
             print("Number received from the other side:", number)
+            break
+        if readsx > 10:
+            print("Too many attempts failing.")
             break
         time.sleep(0.05)
         print("Weird number", number)
@@ -141,12 +201,14 @@ while True:
     if (GPIO.input(messagePIN)):
         print ("Sleepy Pi requesting comms on pin 25")
         controller.pin_high()
-        number = readNumber()
-        print "Number:", number
-        if number == 11:
-            writeNumber(11)
-            print "OK, code 11, confirmed. Waiting order"
+        print("EXIT")
+#        number = readNumber()
+#        print "Number:", number
+#        if number == 11:
+#            writeNumber(11)
+#            print "OK, code 11, confirmed. Waiting order"
     time.sleep(1)
     print "Waiting.."
-print "slut"
+
+print "You will never see this! THE END"
 
