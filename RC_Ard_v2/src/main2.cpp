@@ -26,6 +26,10 @@ int number;
 volatile bool buttonPressed = false;
 
 
+// Intersystem codes
+#define MSG_OK 11
+#define MSG_READY 22
+
 //Events & message-codes
 #define CMD_TRIGGER 50
 #define I2C_TRIGACK_RCV 51
@@ -40,10 +44,9 @@ volatile bool buttonPressed = false;
 
 // I2C FSM Events
 #define CMD_SEND_MESSAGE 80
-#define CMD_MSG_REQUEST 81
+#define CMD_REQUEST 81
 #define CMD_RDY_RECEIVED 82
-#define CMD_CMD_REQUESTED 83
-#define CMD_OK_RECEIVED 84
+#define CMD_OK_RECEIVED 83
 
 #define TIMEOUT 99
 
@@ -89,8 +92,6 @@ Fsm fsm(&state_contr_waiting);
 
 State state_i2c_waiting_pioff(NULL, NULL, &turnOnPi);
 Fsm fsmi2c(&state_i2c_waiting_pioff);
-
-char *ArdMessage = "Empty";
 
 int CmdToSend = 0;
 
@@ -152,8 +153,10 @@ void I2C_RepDone_Rcv()
 // this function is registered as an event, see setup() 
 void requestEvent() 
 {
-  //Wire.write(11);
-  Serial.print("requestEvent!");
+  // Serial.print("requestEvent!");
+  // Wire.write(MSG_READY);
+  fsmi2c.trigger(CMD_REQUEST);
+
   // byte output[] = {0x01,0x02,0x03,0x04};  // This is just some sample data for testing
   // Wire.write(output, 4);
   // Wire.write(ArdMessage);
@@ -175,8 +178,8 @@ void receiveEvent(int numBytes)
   int inByte = Wire.read();    // receive byte as an integer
   Serial.println(inByte);
   switch (inByte) {
-    case I2C_TRIGACK_RCV:
-      fsm.trigger(I2C_TRIGACK_RCV);
+    case MSG_READY:
+      fsmi2c.trigger(CMD_RDY_RECEIVED);
       break;
     case I2C_TRIGDONE_RCV:
       fsm.trigger(I2C_TRIGDONE_RCV);
@@ -187,30 +190,79 @@ void receiveEvent(int numBytes)
   
 }
 
+////////////////////////
+// I2C Transition functions
 void i2c_waiting_to_onning()
 {
-
+   Serial.println("\n\nTransition:i2c_waiting_to_onning.\n");
+   digitalWrite(messagesignal_pin, HIGH);  
+   Serial.println("MessagePin set to high. Hoping for a i2c read request.\n");
 }
 
 void i2c_onning_to_readying()
 {
+   Wire.write(MSG_READY);
+   Serial.println("\n\nTransition:i2c_onning_to_readying. Now sending MSG_READY!\n");
+
 
 }
 
 void i2c_readying_to_confirming()
 {
-
+   Serial.println("\n\nTransition:i2c_readying_to_confirming.\n");
+   digitalWrite(messagesignal_pin, LOW);  
+   Serial.println("MessagePin set to LOW. Hoping for a i2c read request again.\n");
 }
 
 void i2c_confirming_to_commanding()
 {
-
+   Serial.println("\n\nTransition:i2c_confirming_to_commanding.\n");
+   Serial.print("\nNow sending:");
+   Serial.print(CmdToSend);
+   Wire.write(CmdToSend);
 }
 
 void i2c_commanding_to_waiting()
 {
-
+   Serial.println("\n\nTransition:i2c_commanding_to_waiting.\n");
 }
+
+////////////////////////
+// Controller transition functions
+void contr_waiting_to_waitfortriggerack()
+{
+   Serial.println("\n\nTranisition:contr_waiting_to_waitfortriggerack.\n");
+   CmdToSend = CMD_TRIGGER;
+   fsmi2c.trigger(CMD_SEND_MESSAGE);
+}
+
+int triggerackwaits = 0;
+void contr_waitfortriggerack_to_waitfortriggerack()
+{
+   Serial.println("\n\nTranisition:contr_waitfortriggerack_to_waitfortriggerack.\n");
+   if (triggerackwaits++ > 10) {
+    Serial.print("\nKept waiting for RPi too long. Returning to wait.");
+    triggerackwaits = 0;
+    fsm.trigger(TIMEOUT);
+  }
+}
+
+void contr_waitfortriggerack_to_rpinotworking()
+{
+   Serial.println("\n\nTranisition:contr_waitfortriggerack_to_rpinotworking.\n");
+}
+
+void contr_waitfortriggerack_to_waitforsoundplaying()
+{
+   Serial.println("\n\nTranisition:contr_waitfortriggerack_to_waitforsoundplaying.\n");
+}
+
+void contr_waitforsoundplaying_to_waiting()
+{
+   Serial.println("\n\nTranisition:contr_waitforsoundplaying_to_waiting.\n");
+}
+
+
 
 
 // A handler for the Button interrupt.
@@ -226,19 +278,20 @@ void button_isr()
 void setup() {
 
   // First the core controller state transitions
-  fsm.add_transition(&state_contr_waiting, &state_contr_waitfortriggerack, GPIO_TRIGGER, NULL);
-  fsm.add_timed_transition(&state_contr_waitfortriggerack, &state_contr_waitfortriggerack, 3000, NULL);
+  fsm.add_transition(&state_contr_waiting, &state_contr_waitfortriggerack, GPIO_TRIGGER, &contr_waiting_to_waitfortriggerack);
+  // fsm.add_timed_transition(&state_contr_waitfortriggerack, &state_contr_waitfortriggerack, 3000, &contr_waitfortriggerack_to_waitfortriggerack);
+  fsm.add_timed_transition(&state_contr_waitfortriggerack, &state_contr_rpinotworking, 10000, &contr_waitfortriggerack_to_rpinotworking);
 
-  fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_rpinotworking, TIMEOUT, NULL);
-  fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_waitforsoundplaying, I2C_TRIGACK_RCV, NULL);
-  fsm.add_transition(&state_contr_waitforsoundplaying, &state_contr_waiting, I2C_TRIGDONE_RCV, NULL);
+  fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_rpinotworking, TIMEOUT, &contr_waitfortriggerack_to_rpinotworking);
+  fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_waitforsoundplaying, I2C_TRIGACK_RCV, &contr_waitfortriggerack_to_waitforsoundplaying);
+  fsm.add_transition(&state_contr_waitforsoundplaying, &state_contr_waiting, I2C_TRIGDONE_RCV, &contr_waitforsoundplaying_to_waiting);
   
   // Secondly the i2c protocol transitions
   fsmi2c.add_transition(&state_i2c_waiting_pioff, &state_i2c_onning, CMD_SEND_MESSAGE, &i2c_waiting_to_onning);
-  fsmi2c.add_transition(&state_i2c_onning, &state_i2c_readying, CMD_MSG_REQUEST, &i2c_onning_to_readying);
+  fsmi2c.add_transition(&state_i2c_onning, &state_i2c_readying, CMD_REQUEST, &i2c_onning_to_readying);
   fsmi2c.add_transition(&state_i2c_readying, &state_i2c_confirming, CMD_RDY_RECEIVED, &i2c_readying_to_confirming);
-  fsmi2c.add_transition(&state_i2c_confirming, &state_i2c_commanding, CMD_CMD_REQUESTED, &i2c_confirming_to_commanding);
-  fsmi2c.add_transition(&state_i2c_commanding, &state_i2c_waiting_pioff, CMD_OK_RECEIVED, &i2c_commanding_to_waiting;
+  fsmi2c.add_transition(&state_i2c_confirming, &state_i2c_commanding, CMD_REQUEST, &i2c_confirming_to_commanding);
+  fsmi2c.add_transition(&state_i2c_commanding, &state_i2c_waiting_pioff, CMD_OK_RECEIVED, &i2c_commanding_to_waiting);
   // TODO add time transitions for timeouts!
 
   // Allow wake up triggered by button press
@@ -266,13 +319,13 @@ void loop() {
   fsm.run_machine();
   fsmi2c.run_machine();
   digitalWrite(led_pin, HIGH);   // turn the LED on (HIGH is the voltage level)
-  delay(500);               // wait for a second
+  delay(5);               // wait for a second
   digitalWrite(led_pin, LOW);    // turn the LED off by making the voltage LOW
-  delay(200);               // wait for a second
+  delay(2);               // wait for a second
 
-  if (c2++ > 10) {
+  if (c2++ > 1000) {
     Serial.print(".");
-    Serial.print(c);
+    // Serial.print(c);
     // Wire.beginTransmission(7); // transmit to device #
     // Wire.write("c is ");        // sends five bytes
     // Wire.write(c);              // sends one byte

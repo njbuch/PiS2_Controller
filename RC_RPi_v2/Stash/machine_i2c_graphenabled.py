@@ -124,6 +124,8 @@ print("state:", controller.state)
 
 
 
+
+
 # assert controller.state == 'sleep'  # Preparing for the night shift
 # assert machine.get_state(controller.state).is_busy  # We are at home and busy
 # print(machine.get_state(controller.state).is_busy)
@@ -154,7 +156,7 @@ print("state:", controller.state)
 """
 
 # draw the whole graph ...
-controller.get_graph().draw('my_state_diagram.png', prog='dot')
+# controller.get_graph().draw('my_state_diagram.png', prog='dot')
 # ... or just the region of interest
 # (previous state, active state and all reachable states)
 # m.get_graph(show_roi=True).draw('my_state_diagram.png', prog='dot')
