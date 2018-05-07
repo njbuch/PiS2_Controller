@@ -6,14 +6,18 @@
   when running the rpi3 command: "i2cset -y 1 0x07 0x11" 
  
  TODO: Merge with https://github.com/SpellFoundry/SleepyPi2/blob/master/examples/ButtonOnOff3/ButtonOnOff3.ino
- TODO: Establish a protocol / statemachine that adresses the commands needed 
- TODO: Convert existing mechanics control to https://github.com/jonblack/arduino-fsm
  
  */
  
 #include <Wire.h> 
 #include "Arduino.h"
 #include "Fsm.h"
+#include "SleepyPi2.h"
+#include <Time.h>
+#include <LowPower.h>
+#include <PCF8523.h>
+#include <Wire.h>
+
 
 static char c = '0';
 // Pin 13 has an LED connected on most Arduino boards.
@@ -320,11 +324,15 @@ void setup() {
   digitalWrite(messagesignal_pin, LOW);  
   Serial.println("\n\n---------------\nSetup complete. MessagePin set to low. Now waiting.");
 
+  // Switching on
+  SleepyPi.enablePiPower(true);  
+  SleepyPi.enableExtPower(true);
 }
 
 // the loop routine runs over and over again forever:
 int c2 = 0;
 bool toggle = true;
+float  pi_current; 
 void loop() {
   fsm.run_machine();
   fsmi2c.run_machine();
@@ -335,8 +343,11 @@ void loop() {
     digitalWrite(led_pin, toggle);   // turn the LED on (HIGH is the voltage level)
     c = 0;
   }
-  if (c2++ > 1000) {
+  if (c2++ > 3000) {
     Serial.print(".");
+    pi_current = SleepyPi.rpiCurrent();
+    Serial.print(pi_current);
+    Serial.print(" mA        ");
     // Serial.print(c);
     // Wire.beginTransmission(7); // transmit to device #
     // Wire.write("c is ");        // sends five bytes
