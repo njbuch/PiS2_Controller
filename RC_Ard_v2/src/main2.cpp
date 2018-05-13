@@ -34,7 +34,14 @@ volatile bool buttonPressed = false;
 #define MSG_OK 11
 #define MSG_READY 22
 
+
+
 //Events & message-codes
+
+#define CMD_TODO_TRIGGER 50;
+#define CMD_TODO_REPORT 51;
+#define CMD_TODO_SHUTDOWN 52
+
 #define CMD_TRIGGER 50
 #define I2C_TRIGACK_RCV 51
 #define I2C_TRIGDONE_RCV 52
@@ -106,7 +113,7 @@ void sendI2CTrigger()
   Serial.print("func:sendI2CTrigger->");
   Serial.println(sendTriggerCount);
 
-  CmdToSend = CMD_TRIGGER;
+  CmdToSend = CMD_TODO_SHUTDOWN;
   fsmi2c.trigger(CMD_SEND_MESSAGE);
 
   sendTriggerCount++;
@@ -245,7 +252,7 @@ void i2c_commanding_to_waiting()
 void contr_waiting_to_waitfortriggerack()
 {
    Serial.println("\n\nTranisition:contr_waiting_to_waitfortriggerack.\n");
-   CmdToSend = CMD_TRIGGER;
+   CmdToSend = CMD_TODO_SHUTDOWN;
    fsmi2c.trigger(CMD_SEND_MESSAGE);
 }
 

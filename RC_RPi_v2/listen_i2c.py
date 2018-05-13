@@ -24,6 +24,7 @@ MSG_READY = 22
 
 CMD_TODO_TRIGGER = 50;
 CMD_TODO_REPORT = 51;
+CMD_TODO_SHUTDOWN = 52
 
 ## The timeout is the waiting time until there is a timeout for a reply on the i2c bus
 WAIT = 600 #TODO set this timeout to 5
@@ -82,8 +83,12 @@ class RPI_Controller(object):
             time.sleep(5)
 
         if self.todo_command == CMD_TODO_REPORT:
-            print("Here we will do some repoting! -------------------")
+            print("Here we will do some reporting! -------------------")
             time.sleep(5)
+
+	if self.todo_command == CMD_TODO_SHUTDOWN:
+	    print("Shutting down!")
+            os.system("sudo shutdown -h now")
 
         writeNumber(MSG_OK) ## this is the confirmation of all went ok!
         self.done()
