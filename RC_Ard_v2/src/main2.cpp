@@ -29,27 +29,22 @@ int number;
 
 volatile bool buttonPressed = false;
 
-
 // Intersystem codes
 #define MSG_OK 11
 #define MSG_READY 22
-
-#define CMD_TODO_TRIGGER 50;
-#define CMD_TODO_REPORT 51;
-#define CMD_TODO_SHUTDOWN 52
-
+#define MSG_TODO_TRIGGER 50;
+#define MSG_TODO_REPORT 51;
+#define MSG_TODO_SHUTDOWN 52
 
 //Events & message-codes
-#define CMD_TRIGGER 50
-#define I2C_TRIGACK_RCV 51
-#define I2C_TRIGDONE_RCV 52
-
-#define I2C_REPACK_RCV 60
-#define I2C_REPDONE_RCV 61
-
-#define GPIO_TRIGGER 70
-#define GPIO_BUTTON 71
-#define GPIO_BUTTON2 72
+#define CONTR_GPIO_TRIGGER 70
+#define CONTR_GPIO_BUTTON 71
+#define CONTR_GPIO_BUTTON2 72
+#define CONTR_TIMEOUT 99
+#define CONTR_I2C_TRIGACK_RCV 51
+#define CONTR_I2C_TRIGDONE_RCV 52
+#define CONTR_I2C_REPACK_RCV 60
+#define CONTR_I2C_REPDONE_RCV 61
 
 // I2C FSM Events
 #define CMD_SEND_MESSAGE 80
@@ -57,7 +52,6 @@ volatile bool buttonPressed = false;
 #define CMD_RDY_RECEIVED 82
 #define CMD_OK_RECEIVED 83
 
-#define TIMEOUT 99
 
 /////////////////////////////////////
 // Enter/exit functions
@@ -114,13 +108,13 @@ void sendI2CTrigger()
   Serial.print("func:sendI2CTrigger->");
   Serial.println(sendTriggerCount);
 
-  CmdToSend = CMD_TODO_SHUTDOWN;
+  CmdToSend = MSG_TODO_SHUTDOWN;
   fsmi2c.trigger(CMD_SEND_MESSAGE);
 
   sendTriggerCount++;
   if (sendTriggerCount > 10) {
     sendTriggerCount = 0;
-    fsm.trigger(TIMEOUT);
+    fsm.trigger(CONTR_TIMEOUT);
   }
 }
 
@@ -129,6 +123,7 @@ void sendI2CTrigger()
 State state_contr_waitfortriggerack(NULL, NULL, NULL);
 State state_contr_waitforsoundplaying(NULL, NULL, NULL);
 State state_contr_rpinotworking(&errorMessage, NULL, NULL);
+State state_contr_waitforshutdown(NULL, NULL, NULL);
 
 
 // I2C protocol communication states
@@ -253,7 +248,7 @@ void i2c_commanding_to_waiting()
 void contr_waiting_to_waitfortriggerack()
 {
    Serial.println("\n\nTranisition:contr_waiting_to_waitfortriggerack.\n");
-   CmdToSend = CMD_TODO_SHUTDOWN;
+   CmdToSend = MSG_TODO_TRIGGER;
    fsmi2c.trigger(CMD_SEND_MESSAGE);
 }
 
@@ -264,7 +259,7 @@ void contr_waitfortriggerack_to_waitfortriggerack()
    if (triggerackwaits++ > 10) {
     Serial.print("\nKept waiting for RPi too long. Returning to wait.");
     triggerackwaits = 0;
-    fsm.trigger(TIMEOUT);
+    fsm.trigger(CONTR_TIMEOUT);
   }
 }
 
@@ -283,6 +278,15 @@ void contr_waitforsoundplaying_to_waiting()
    Serial.println("\n\nTranisition:contr_waitforsoundplaying_to_waiting.\n");
 }
 
+void contr_waitforshutdown_to_waiting()
+{
+   Serial.println("\n\nTranisition:contr_waitforshutdown_to_waiting.\n");
+}
+
+void contr_waiting_to_waitforshutdown()
+{
+   Serial.println("\n\nTranisition:contr_waiting_to_waitforshutdown.\n");
+}
 
 
 
@@ -314,14 +318,16 @@ void button_isr()
 void setup() {
 
   // First the core controller state transitions
-  fsm.add_transition(&state_contr_waiting, &state_contr_waitfortriggerack, GPIO_TRIGGER, &contr_waiting_to_waitfortriggerack);
+  fsm.add_transition(&state_contr_waiting, &state_contr_waitfortriggerack, CONTR_GPIO_TRIGGER, &contr_waiting_to_waitfortriggerack);
   // fsm.add_timed_transition(&state_contr_waitfortriggerack, &state_contr_waitfortriggerack, 3000, &contr_waitfortriggerack_to_waitfortriggerack);
   fsm.add_timed_transition(&state_contr_waitfortriggerack, &state_contr_rpinotworking, 10000, &contr_waitfortriggerack_to_rpinotworking);
 
-  fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_rpinotworking, TIMEOUT, &contr_waitfortriggerack_to_rpinotworking);
-  fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_waitforsoundplaying, I2C_TRIGACK_RCV, &contr_waitfortriggerack_to_waitforsoundplaying);
-  fsm.add_transition(&state_contr_waitforsoundplaying, &state_contr_waiting, I2C_TRIGDONE_RCV, &contr_waitforsoundplaying_to_waiting);
-  
+  fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_rpinotworking, CONTR_TIMEOUT, &contr_waitfortriggerack_to_rpinotworking);
+  fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_waitforsoundplaying, CONTR_I2C_TRIGACK_RCV, &contr_waitfortriggerack_to_waitforsoundplaying);
+  fsm.add_transition(&state_contr_waitforsoundplaying, &state_contr_waiting, CONTR_I2C_TRIGDONE_RCV, &contr_waitforsoundplaying_to_waiting);
+  fsm.add_transition(&state_contr_waiting, &state_contr_waitforshutdown, CONTR_GPIO_BUTTON, &contr_waiting_to_waitforshutdown);
+  fsm.add_timed_transition(&state_contr_waitforshutdown, &state_contr_waiting, 6000, &contr_waitforshutdown_to_waiting);
+
   // Secondly the i2c protocol transitions
   fsmi2c.add_transition(&state_i2c_waiting_pioff, &state_i2c_onning, CMD_SEND_MESSAGE, &i2c_waiting_to_onning);
   fsmi2c.add_transition(&state_i2c_onning, &state_i2c_readying, CMD_REQUEST, &i2c_onning_to_readying);
@@ -365,7 +371,7 @@ void loop() {
     switch (buttonPresses) {
       case 1:
         Serial.println("1 button press, fire!");
-        // fsm.trigger(GPIO_TRIGGER);
+        fsm.trigger(CONTR_GPIO_TRIGGER);
         // statements
         break;
       case 2:
@@ -378,7 +384,7 @@ void loop() {
         break;
       default:
         // statements
-        Serial.println("WHAAAAT button press, fire!");
+        Serial.println("Weird button press, fire!");
     }
     buttonPresses = 0;
   }
@@ -388,7 +394,7 @@ void loop() {
     digitalWrite(led_pin, toggle);   // turn the LED on (HIGH is the voltage level)
     c = 0;
   }
-  if (c2++ > 3000) {
+  if (c2++ > 30000) {
     Serial.print(".");
     pi_current = SleepyPi.rpiCurrent();
     Serial.print(pi_current);
