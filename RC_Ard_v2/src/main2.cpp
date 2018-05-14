@@ -34,14 +34,12 @@ volatile bool buttonPressed = false;
 #define MSG_OK 11
 #define MSG_READY 22
 
-
-
-//Events & message-codes
-
 #define CMD_TODO_TRIGGER 50;
 #define CMD_TODO_REPORT 51;
 #define CMD_TODO_SHUTDOWN 52
 
+
+//Events & message-codes
 #define CMD_TRIGGER 50
 #define I2C_TRIGACK_RCV 51
 #define I2C_TRIGDONE_RCV 52
@@ -67,13 +65,16 @@ void turnOnPi()
 {
   Serial.println("func:turnOnPi");
   //TODO Use the SleepyPi2 lib to switch on
+  SleepyPi.enableExtPower(true);
+  SleepyPi.enablePiPower(true);
 }
-
 
 void shutDownPi()
 {
   Serial.println("func:shutdownPi");
   //TODO Use the SleepyPi2 lib to switch off
+  SleepyPi.enableExtPower(false);
+  SleepyPi.enablePiPower(false);
 }
 
 void SignalMessageToPi()
@@ -286,9 +287,24 @@ void contr_waitforsoundplaying_to_waiting()
 
 
 // A handler for the Button interrupt.
+
+byte buttonPresses = 0;                // how many times the button has been pressed 
+unsigned long lastpress_time = 0;
+unsigned long last_interrupt_time = 0;
 void button_isr()
 {
-    fsm.trigger(GPIO_TRIGGER);
+  // first we have the debounce
+  unsigned long interrupt_time = millis();
+  if (interrupt_time - last_interrupt_time > 200) 
+  {
+    last_interrupt_time = interrupt_time;
+    // then we have the buttonpress
+    buttonPresses++;
+    if (buttonPresses == 4) buttonPresses = 0;         // rollover every fourth press
+    lastpress_time = millis();  
+    Serial.print("Press:");
+    Serial.println(buttonPresses);
+  }
 }
 
 // void add_timed_transition(State* state_from, State* state_to, unsigned long interval, void (*on_transition)());
@@ -326,7 +342,7 @@ void setup() {
   Wire.onRequest(requestEvent); // register event 
   Wire.onReceive(receiveEvent);
  
-  Serial.begin(9600);           // start serial for output
+  Serial.begin(115200);           // start serial for output
 
   digitalWrite(messagesignal_pin, LOW);  
   Serial.println("\n\n---------------\nSetup complete. MessagePin set to low. Now waiting.");
@@ -343,7 +359,29 @@ float  pi_current;
 void loop() {
   fsm.run_machine();
   fsmi2c.run_machine();
- 
+  
+  // button-press handler
+  if ((buttonPresses > 0) && ((millis() - lastpress_time) > 1000)) {
+    switch (buttonPresses) {
+      case 1:
+        Serial.println("1 button press, fire!");
+        // fsm.trigger(GPIO_TRIGGER);
+        // statements
+        break;
+      case 2:
+        // statements
+        Serial.println("2 button press, fire!");
+        break;
+      case 3:
+        // statements
+        Serial.println("3 button press, fire!");
+        break;
+      default:
+        // statements
+        Serial.println("WHAAAAT button press, fire!");
+    }
+    buttonPresses = 0;
+  }
  
   if (c++ > 100) {
     toggle = !toggle;
