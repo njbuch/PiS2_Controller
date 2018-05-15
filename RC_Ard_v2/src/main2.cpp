@@ -8,8 +8,7 @@
  TODO: Merge with https://github.com/SpellFoundry/SleepyPi2/blob/master/examples/ButtonOnOff3/ButtonOnOff3.ino
  
  */
- 
-#include <Wire.h> 
+
 #include "Arduino.h"
 #include "Fsm.h"
 #include "SleepyPi2.h"
@@ -20,14 +19,15 @@
 
 
 static char c = '0';
-// Pin 13 has an LED connected on most Arduino boards.
-// give it a name:
+// Pin 13 has an LED connected on most Arduino boards. 
 int led_pin = 13;
 int button_pin = 3;
 int messagesignal_pin = 7;
 int number;
+int QuickReply = 255;
 
 volatile bool buttonPressed = false;
+int CmdToSend = -1;
 
 // Intersystem codes
 #define MSG_OK 11
@@ -52,94 +52,28 @@ volatile bool buttonPressed = false;
 #define CMD_RDY_RECEIVED 82
 #define CMD_OK_RECEIVED 83
 
-
-/////////////////////////////////////
-// Enter/exit functions
-void turnOnPi()
-{
-  Serial.println("func:turnOnPi");
-  //TODO Use the SleepyPi2 lib to switch on
-  SleepyPi.enableExtPower(true);
-  SleepyPi.enablePiPower(true);
-}
-
-void shutDownPi()
-{
-  Serial.println("func:shutdownPi");
-  //TODO Use the SleepyPi2 lib to switch off
-  SleepyPi.enableExtPower(false);
-  SleepyPi.enablePiPower(false);
-}
-
-void SignalMessageToPi()
-{
-  Serial.println("func:SignalMessageToPi");
-  digitalWrite(messagesignal_pin, HIGH);  
-}
-
-void SignalNOMessageToPi()
-{
-  Serial.println("func:SignalNOMessageToPi");
-  digitalWrite(messagesignal_pin, LOW);  
-}
-
-void errorMessage()
-{
-  Serial.println("In a bad error-state. RPI not responding.");
-}
-
-
-//////////////////////////////////////////////////////////
-// Declaring and defining TWO state machines
-// One for the primary states of the controller and one for I2C comms with RPi3
-// States  State(void (*on_enter)(), void (*on_state)(), void (*on_exit)());
-State state_contr_waiting(NULL, NULL, NULL);
-Fsm fsm(&state_contr_waiting);
-
-State state_i2c_waiting_pioff(NULL, NULL, &turnOnPi);
-Fsm fsmi2c(&state_i2c_waiting_pioff);
-
-int CmdToSend = -1;
-
-void sendI2CTrigger()
-{
-  static int sendTriggerCount = 0;
-
-  Serial.print("func:sendI2CTrigger->");
-  Serial.println(sendTriggerCount);
-
-  CmdToSend = MSG_TODO_SHUTDOWN;
-  fsmi2c.trigger(CMD_SEND_MESSAGE);
-
-  sendTriggerCount++;
-  if (sendTriggerCount > 10) {
-    sendTriggerCount = 0;
-    fsm.trigger(CONTR_TIMEOUT);
-  }
-}
-
-
+#pragma region States
 // Primary controller states
+State state_contr_waiting(NULL, NULL, NULL);
 State state_contr_waitfortriggerack(NULL, NULL, NULL);
 State state_contr_waitforsoundplaying(NULL, NULL, NULL);
-State state_contr_rpinotworking(&errorMessage, NULL, NULL);
+State state_contr_rpinotworking(NULL, NULL, NULL);
 State state_contr_waitforshutdown(NULL, NULL, NULL);
-
+Fsm fsm(&state_contr_waiting);
 
 // I2C protocol communication states
 State state_i2c_onning(NULL, NULL, NULL);
 State state_i2c_readying(NULL, NULL, NULL);
 State state_i2c_confirming(NULL, NULL, NULL);
 State state_i2c_commanding(NULL, NULL, NULL);
+State state_i2c_waiting_pioff(NULL, NULL, NULL);
+Fsm fsmi2c(&state_i2c_waiting_pioff);
 
+#pragma endregion
 
+#pragma region I2CTransitionFunctions
 ////////////////////////////////
 // Transition functions
-void GPIO_Trigger()
-{
-  Serial.println("func:GPIO_Trigger");
-
-}
 
 void I2C_TrigAck_Rcv()
 {
@@ -154,56 +88,6 @@ void I2C_RepAck_Rcv()
 void I2C_RepDone_Rcv()
 {
   Serial.println("func:I2C_RepDone_Rcv");
-}
-
-int QuickReply = 255;
-void requestEvent() 
-{
-  Wire.write(QuickReply);
-  Serial.print("requestEvent");
-  Serial.println(QuickReply);
-  fsmi2c.trigger(CMD_REQUEST);
-}
-// this function is registered as an event, see setup() 
-void requestEventOLD() 
-{
-   Wire.write(MSG_READY);
-   Serial.print("requestEvent!");
-
-  fsmi2c.trigger(CMD_REQUEST);
-
-  // byte output[] = {0x01,0x02,0x03,0x04};  // This is just some sample data for testing
-  // Wire.write(output, 4);
-  // Wire.write(ArdMessage);
-  // delay(200);
-  // Serial.print("Setting Signal Pin LOW");
-  // digitalWrite(messagesignal_pin, LOW);  
-  // fsmi2c.trigger(MSG_REQUEST);
-}
-
-void receiveEvent(int numBytes) 
-{
-  Serial.print("receiveEvent:");
-  Serial.print(numBytes);
-  while (1 < Wire.available()) { // loop through all but the last
-     int code = Wire.read(); // receive byte as a character
-     Serial.print(code);         // print the character
-     }
-  Serial.print(":");
-  int inByte = Wire.read();    // receive byte as an integer
-  Serial.println(inByte);
-  switch (inByte) {
-    case MSG_READY:
-      fsmi2c.trigger(CMD_RDY_RECEIVED);
-      break;
-    case MSG_OK:
-      Serial.print("OK received, now relax!");
-      fsmi2c.trigger(CMD_OK_RECEIVED);
-      break;
-    default:
-      break;
- }
-  
 }
 
 ////////////////////////
@@ -243,6 +127,9 @@ void i2c_commanding_to_waiting()
    Serial.println("\n\nTransition:i2c_commanding_to_waiting.\n");
 }
 
+#pragma endregion I2CTransitionFunctions
+
+#pragma region ContrTransitionFunctions
 ////////////////////////
 // Controller transition functions
 void contr_waiting_to_waitfortriggerack()
@@ -286,7 +173,127 @@ void contr_waitforshutdown_to_waiting()
 void contr_waiting_to_waitforshutdown()
 {
    Serial.println("\n\nTranisition:contr_waiting_to_waitforshutdown.\n");
+
 }
+
+#pragma endregion ContrTransitionFunctions
+
+#pragma region Transitions
+//////////////////////////////////////////////////////////
+// Declaring and defining TWO state machines
+// One for the primary states of the controller and one for I2C comms with RPi3
+// States  State(void (*on_enter)(), void (*on_state)(), void (*on_exit)());
+
+void setupTransitions() {
+  // First the core controller state transitions
+  fsm.add_transition(&state_contr_waiting, &state_contr_waitfortriggerack, CONTR_GPIO_TRIGGER, &contr_waiting_to_waitfortriggerack);
+  // fsm.add_timed_transition(&state_contr_waitfortriggerack, &state_contr_waitfortriggerack, 3000, &contr_waitfortriggerack_to_waitfortriggerack);
+  fsm.add_timed_transition(&state_contr_waitfortriggerack, &state_contr_rpinotworking, 10000, &contr_waitfortriggerack_to_rpinotworking);
+
+  fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_rpinotworking, CONTR_TIMEOUT, &contr_waitfortriggerack_to_rpinotworking);
+  fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_waitforsoundplaying, CONTR_I2C_TRIGACK_RCV, &contr_waitfortriggerack_to_waitforsoundplaying);
+  fsm.add_transition(&state_contr_waitforsoundplaying, &state_contr_waiting, CONTR_I2C_TRIGDONE_RCV, &contr_waitforsoundplaying_to_waiting);
+  fsm.add_transition(&state_contr_waiting, &state_contr_waitforshutdown, CONTR_GPIO_BUTTON, &contr_waiting_to_waitforshutdown);
+  fsm.add_timed_transition(&state_contr_waitforshutdown, &state_contr_waiting, 6000, &contr_waitforshutdown_to_waiting);
+
+  // Secondly the i2c protocol transitions
+  fsmi2c.add_transition(&state_i2c_waiting_pioff, &state_i2c_onning, CMD_SEND_MESSAGE, &i2c_waiting_to_onning);
+  fsmi2c.add_transition(&state_i2c_onning, &state_i2c_readying, CMD_REQUEST, &i2c_onning_to_readying);
+  fsmi2c.add_transition(&state_i2c_readying, &state_i2c_confirming, CMD_RDY_RECEIVED, &i2c_readying_to_confirming);
+  fsmi2c.add_transition(&state_i2c_confirming, &state_i2c_commanding, CMD_REQUEST, &i2c_confirming_to_commanding);
+  fsmi2c.add_transition(&state_i2c_commanding, &state_i2c_waiting_pioff, CMD_OK_RECEIVED, &i2c_commanding_to_waiting);
+  // TODO add time transitions for timeouts!
+}
+
+#pragma endregion Transitions
+
+#pragma region I2CCore
+//////////////////////////
+// I2C core functions
+
+void requestEvent() 
+{
+  // Very important that the first command in this function is just sending a message, anything else will result
+  // in problems with timing
+  Wire.write(QuickReply);
+  Serial.print("requestEvent triggerede by I2C comms...:");
+  Serial.println(QuickReply);
+  fsmi2c.trigger(CMD_REQUEST); // Please note this can trigger two different state changes!
+}
+
+void receiveEvent(int numBytes) 
+{
+  Serial.print("receiveEvent:");
+  Serial.print(numBytes);
+  while (1 < Wire.available()) { // loop through all but the last
+     int code = Wire.read(); // receive byte as a character
+     Serial.print(code);         // print the character
+     }
+  Serial.print(":");
+  int inByte = Wire.read();    // receive byte as an integer
+  Serial.println(inByte);
+  switch (inByte) {
+    case MSG_READY:
+      fsmi2c.trigger(CMD_RDY_RECEIVED);
+      break;
+    case MSG_OK:
+      Serial.print("OK received, now relax!");
+      fsmi2c.trigger(CMD_OK_RECEIVED);
+      break;
+    default:
+      break;
+ }
+  
+}
+#pragma endregion
+
+#pragma region ControlFunctions
+/////////////////////////////////////
+// Enter/exit functions
+bool PiOn_flag = false;
+unsigned long PiOn_time = 0;
+void turnOnPi()
+{
+  Serial.println("func:turnOnPi");
+  if (!PiOn_flag) {
+    SleepyPi.enableExtPower(true);
+    SleepyPi.enablePiPower(true);
+    PiOn_time = millis();
+    PiOn_flag = true;
+  }
+}
+
+void shutDownPi()
+{
+  Serial.println("func:shutdownPi");
+  //TODO Use the SleepyPi2 lib to switch off
+  SleepyPi.enableExtPower(false);
+  SleepyPi.enablePiPower(false);
+}
+
+void SignalMessageToPi()
+{
+  Serial.println("func:SignalMessageToPi");
+  digitalWrite(messagesignal_pin, HIGH);  
+}
+
+void SignalNOMessageToPi()
+{
+  Serial.println("func:SignalNOMessageToPi");
+  digitalWrite(messagesignal_pin, LOW);  
+}
+
+void errorMessage()
+{
+  Serial.println("In a bad error-state. RPI not responding.");
+}
+
+void GPIO_Trigger()
+{
+  Serial.println("func:GPIO_Trigger");
+}
+
+#pragma endregion
 
 
 
@@ -317,24 +324,7 @@ void button_isr()
 // the setup routine runs once when you press reset:
 void setup() {
 
-  // First the core controller state transitions
-  fsm.add_transition(&state_contr_waiting, &state_contr_waitfortriggerack, CONTR_GPIO_TRIGGER, &contr_waiting_to_waitfortriggerack);
-  // fsm.add_timed_transition(&state_contr_waitfortriggerack, &state_contr_waitfortriggerack, 3000, &contr_waitfortriggerack_to_waitfortriggerack);
-  fsm.add_timed_transition(&state_contr_waitfortriggerack, &state_contr_rpinotworking, 10000, &contr_waitfortriggerack_to_rpinotworking);
-
-  fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_rpinotworking, CONTR_TIMEOUT, &contr_waitfortriggerack_to_rpinotworking);
-  fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_waitforsoundplaying, CONTR_I2C_TRIGACK_RCV, &contr_waitfortriggerack_to_waitforsoundplaying);
-  fsm.add_transition(&state_contr_waitforsoundplaying, &state_contr_waiting, CONTR_I2C_TRIGDONE_RCV, &contr_waitforsoundplaying_to_waiting);
-  fsm.add_transition(&state_contr_waiting, &state_contr_waitforshutdown, CONTR_GPIO_BUTTON, &contr_waiting_to_waitforshutdown);
-  fsm.add_timed_transition(&state_contr_waitforshutdown, &state_contr_waiting, 6000, &contr_waitforshutdown_to_waiting);
-
-  // Secondly the i2c protocol transitions
-  fsmi2c.add_transition(&state_i2c_waiting_pioff, &state_i2c_onning, CMD_SEND_MESSAGE, &i2c_waiting_to_onning);
-  fsmi2c.add_transition(&state_i2c_onning, &state_i2c_readying, CMD_REQUEST, &i2c_onning_to_readying);
-  fsmi2c.add_transition(&state_i2c_readying, &state_i2c_confirming, CMD_RDY_RECEIVED, &i2c_readying_to_confirming);
-  fsmi2c.add_transition(&state_i2c_confirming, &state_i2c_commanding, CMD_REQUEST, &i2c_confirming_to_commanding);
-  fsmi2c.add_transition(&state_i2c_commanding, &state_i2c_waiting_pioff, CMD_OK_RECEIVED, &i2c_commanding_to_waiting);
-  // TODO add time transitions for timeouts!
+  setupTransitions();
 
   // Allow wake up triggered by button press
   attachInterrupt(1, button_isr, LOW);       // button pin
@@ -362,6 +352,7 @@ void setup() {
 int c2 = 0;
 bool toggle = true;
 float  pi_current; 
+
 void loop() {
   fsm.run_machine();
   fsmi2c.run_machine();
@@ -377,6 +368,7 @@ void loop() {
       case 2:
         // statements
         Serial.println("2 button press, fire!");
+        fsm.trigger(CONTR_GPIO_BUTTON);
         break;
       case 3:
         // statements
