@@ -52,6 +52,69 @@ int CmdToSend = -1;
 #define CMD_RDY_RECEIVED 82
 #define CMD_OK_RECEIVED 83
 
+
+#pragma region ControlFunctions
+/////////////////////////////////////
+// Enter/exit functions
+bool PiOn_flag = false;
+unsigned long PiOn_time = 0;
+void turnOnPi()
+{
+  float pi_current;
+  Serial.println("func:turnOnPi");
+  if (!PiOn_flag) {
+    Serial.println("Now switching on power to RPi!\n");
+    SleepyPi.enableExtPower(true);
+    SleepyPi.enablePiPower(true);
+    PiOn_time = millis();
+    PiOn_flag = true;
+  } else {
+    pi_current = SleepyPi.rpiCurrent();
+    // Assuming that something is rotten if there is a power-consumption on less than 10mA
+    if (pi_current > 10) {
+      Serial.println("RPi should already be switched on but does not use any power, trying to switch on!");
+      SleepyPi.enableExtPower(true);
+      SleepyPi.enablePiPower(true);
+      PiOn_time = millis();
+      PiOn_flag = true;
+    }
+  }
+}
+
+void shutDownPi()
+{
+  Serial.println("func:shutdownPi");
+  //TODO Use the SleepyPi2 lib to switch off
+  SleepyPi.enableExtPower(false);
+  SleepyPi.enablePiPower(false);
+  PiOn_flag = false;
+}
+
+void SignalMessageToPi()
+{
+  Serial.println("func:SignalMessageToPi");
+  digitalWrite(messagesignal_pin, HIGH);  
+}
+
+void SignalNOMessageToPi()
+{
+  Serial.println("func:SignalNOMessageToPi");
+  digitalWrite(messagesignal_pin, LOW);  
+}
+
+void errorMessage()
+{
+  Serial.println("In a bad error-state. RPI not responding.");
+}
+
+void GPIO_Trigger()
+{
+  Serial.println("func:GPIO_Trigger");
+}
+
+#pragma endregion
+
+
 #pragma region States
 // Primary controller states
 State state_contr_waiting(NULL, NULL, NULL);
@@ -95,7 +158,7 @@ void I2C_RepDone_Rcv()
 void i2c_waiting_to_onning()
 {
    Serial.println("\n\nTransition:i2c_waiting_to_onning.\n");
-   digitalWrite(messagesignal_pin, HIGH);
+   SignalMessageToPi();
    QuickReply = MSG_READY;
    Serial.println("MessagePin set to high. Hoping for a i2c read request.\n");
 }
@@ -135,6 +198,7 @@ void i2c_commanding_to_waiting()
 void contr_waiting_to_waitfortriggerack()
 {
    Serial.println("\n\nTranisition:contr_waiting_to_waitfortriggerack.\n");
+   turnOnPi();
    CmdToSend = MSG_TODO_TRIGGER;
    fsmi2c.trigger(CMD_SEND_MESSAGE);
 }
@@ -155,6 +219,11 @@ void contr_waitfortriggerack_to_rpinotworking()
    Serial.println("\n\nTranisition:contr_waitfortriggerack_to_rpinotworking.\n");
 }
 
+void contr_rpinotworking_to_waiting()
+{
+   Serial.println("\n\nTranisition:contr_rpinotworking_to_waiting.... LETS TRY AGAIN :) \n");
+}
+
 void contr_waitfortriggerack_to_waitforsoundplaying()
 {
    Serial.println("\n\nTranisition:contr_waitfortriggerack_to_waitforsoundplaying.\n");
@@ -168,12 +237,14 @@ void contr_waitforsoundplaying_to_waiting()
 void contr_waitforshutdown_to_waiting()
 {
    Serial.println("\n\nTranisition:contr_waitforshutdown_to_waiting.\n");
+   shutDownPi();
 }
 
 void contr_waiting_to_waitforshutdown()
 {
-   Serial.println("\n\nTranisition:contr_waiting_to_waitforshutdown.\n");
-
+  Serial.println("\n\nTranisition:contr_waiting_to_waitforshutdown.\n");
+  CmdToSend = MSG_TODO_SHUTDOWN;
+  fsmi2c.trigger(CMD_SEND_MESSAGE);
 }
 
 #pragma endregion ContrTransitionFunctions
@@ -189,12 +260,13 @@ void setupTransitions() {
   fsm.add_transition(&state_contr_waiting, &state_contr_waitfortriggerack, CONTR_GPIO_TRIGGER, &contr_waiting_to_waitfortriggerack);
   // fsm.add_timed_transition(&state_contr_waitfortriggerack, &state_contr_waitfortriggerack, 3000, &contr_waitfortriggerack_to_waitfortriggerack);
   fsm.add_timed_transition(&state_contr_waitfortriggerack, &state_contr_rpinotworking, 10000, &contr_waitfortriggerack_to_rpinotworking);
+  fsm.add_timed_transition(&state_contr_rpinotworking, &state_contr_waiting, 10000, &contr_rpinotworking_to_waiting);
 
   fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_rpinotworking, CONTR_TIMEOUT, &contr_waitfortriggerack_to_rpinotworking);
   fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_waitforsoundplaying, CONTR_I2C_TRIGACK_RCV, &contr_waitfortriggerack_to_waitforsoundplaying);
   fsm.add_transition(&state_contr_waitforsoundplaying, &state_contr_waiting, CONTR_I2C_TRIGDONE_RCV, &contr_waitforsoundplaying_to_waiting);
   fsm.add_transition(&state_contr_waiting, &state_contr_waitforshutdown, CONTR_GPIO_BUTTON, &contr_waiting_to_waitforshutdown);
-  fsm.add_timed_transition(&state_contr_waitforshutdown, &state_contr_waiting, 6000, &contr_waitforshutdown_to_waiting);
+  fsm.add_timed_transition(&state_contr_waitforshutdown, &state_contr_waiting, 20000, &contr_waitforshutdown_to_waiting);
 
   // Secondly the i2c protocol transitions
   fsmi2c.add_transition(&state_i2c_waiting_pioff, &state_i2c_onning, CMD_SEND_MESSAGE, &i2c_waiting_to_onning);
@@ -247,54 +319,6 @@ void receiveEvent(int numBytes)
 }
 #pragma endregion
 
-#pragma region ControlFunctions
-/////////////////////////////////////
-// Enter/exit functions
-bool PiOn_flag = false;
-unsigned long PiOn_time = 0;
-void turnOnPi()
-{
-  Serial.println("func:turnOnPi");
-  if (!PiOn_flag) {
-    SleepyPi.enableExtPower(true);
-    SleepyPi.enablePiPower(true);
-    PiOn_time = millis();
-    PiOn_flag = true;
-  }
-}
-
-void shutDownPi()
-{
-  Serial.println("func:shutdownPi");
-  //TODO Use the SleepyPi2 lib to switch off
-  SleepyPi.enableExtPower(false);
-  SleepyPi.enablePiPower(false);
-}
-
-void SignalMessageToPi()
-{
-  Serial.println("func:SignalMessageToPi");
-  digitalWrite(messagesignal_pin, HIGH);  
-}
-
-void SignalNOMessageToPi()
-{
-  Serial.println("func:SignalNOMessageToPi");
-  digitalWrite(messagesignal_pin, LOW);  
-}
-
-void errorMessage()
-{
-  Serial.println("In a bad error-state. RPI not responding.");
-}
-
-void GPIO_Trigger()
-{
-  Serial.println("func:GPIO_Trigger");
-}
-
-#pragma endregion
-
 
 
 // A handler for the Button interrupt.
@@ -344,6 +368,7 @@ void setup() {
   Serial.println("\n\n---------------\nSetup complete. MessagePin set to low. Now waiting.");
 
   // Switching on
+  PiOn_flag = true;
   SleepyPi.enablePiPower(true);  
   SleepyPi.enableExtPower(true);
 }
