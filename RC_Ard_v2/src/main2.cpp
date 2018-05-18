@@ -119,7 +119,6 @@ void GPIO_Trigger()
 // Primary controller states
 State state_contr_waiting(NULL, NULL, NULL);
 State state_contr_waitfortriggerack(NULL, NULL, NULL);
-State state_contr_waitforsoundplaying(NULL, NULL, NULL);
 State state_contr_rpinotworking(NULL, NULL, NULL);
 State state_contr_waitforshutdown(NULL, NULL, NULL);
 Fsm fsm(&state_contr_waiting);
@@ -188,6 +187,7 @@ void i2c_confirming_to_commanding()
 void i2c_commanding_to_waiting()
 {
    Serial.println("\n\nTransition:i2c_commanding_to_waiting.\n");
+   fsm.trigger( CONTR_I2C_TRIGDONE_RCV);
 }
 
 #pragma endregion I2CTransitionFunctions
@@ -229,9 +229,9 @@ void contr_waitfortriggerack_to_waitforsoundplaying()
    Serial.println("\n\nTranisition:contr_waitfortriggerack_to_waitforsoundplaying.\n");
 }
 
-void contr_waitforsoundplaying_to_waiting()
+void contr_waitfortriggerack_to_waiting()
 {
-   Serial.println("\n\nTranisition:contr_waitforsoundplaying_to_waiting.\n");
+   Serial.println("\n\nTranisition:contr_waitfortriggerack_to_waiting.\n");
 }
 
 void contr_waitforshutdown_to_waiting()
@@ -259,12 +259,10 @@ void setupTransitions() {
   // First the core controller state transitions
   fsm.add_transition(&state_contr_waiting, &state_contr_waitfortriggerack, CONTR_GPIO_TRIGGER, &contr_waiting_to_waitfortriggerack);
   // fsm.add_timed_transition(&state_contr_waitfortriggerack, &state_contr_waitfortriggerack, 3000, &contr_waitfortriggerack_to_waitfortriggerack);
-  fsm.add_timed_transition(&state_contr_waitfortriggerack, &state_contr_rpinotworking, 10000, &contr_waitfortriggerack_to_rpinotworking);
-  fsm.add_timed_transition(&state_contr_rpinotworking, &state_contr_waiting, 10000, &contr_rpinotworking_to_waiting);
-
-  fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_rpinotworking, CONTR_TIMEOUT, &contr_waitfortriggerack_to_rpinotworking);
-  fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_waitforsoundplaying, CONTR_I2C_TRIGACK_RCV, &contr_waitfortriggerack_to_waitforsoundplaying);
-  fsm.add_transition(&state_contr_waitforsoundplaying, &state_contr_waiting, CONTR_I2C_TRIGDONE_RCV, &contr_waitforsoundplaying_to_waiting);
+  fsm.add_timed_transition(&state_contr_waitfortriggerack, &state_contr_rpinotworking, 120000, &contr_waitfortriggerack_to_rpinotworking); // Max 2 minute sounds!
+  fsm.add_timed_transition(&state_contr_rpinotworking, &state_contr_waiting, 10000, &contr_rpinotworking_to_waiting); // self timed
+  fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_rpinotworking, CONTR_TIMEOUT, &contr_waitfortriggerack_to_rpinotworking); //forced
+  fsm.add_transition(&state_contr_waitfortriggerack, &state_contr_waiting, CONTR_I2C_TRIGDONE_RCV, &contr_waitfortriggerack_to_waiting); 
   fsm.add_transition(&state_contr_waiting, &state_contr_waitforshutdown, CONTR_GPIO_BUTTON, &contr_waiting_to_waitforshutdown);
   fsm.add_timed_transition(&state_contr_waitforshutdown, &state_contr_waiting, 20000, &contr_waitforshutdown_to_waiting);
 
@@ -283,14 +281,18 @@ void setupTransitions() {
 //////////////////////////
 // I2C core functions
 
+uint8_t fromking = 0;
 void requestEvent() 
 {
   // Very important that the first command in this function is just sending a message, anything else will result
   // in problems with timing
   Wire.write(QuickReply);
-  Serial.print("requestEvent triggerede by I2C comms...:");
-  Serial.println(QuickReply);
-  fsmi2c.trigger(CMD_REQUEST); // Please note this can trigger two different state changes!
+  // Wire.write((uint8_t)22);
+  // delay(500);
+  // Serial.print("requestEvent triggerede by I2C comms...:");
+  // Serial.println(QuickReply);
+  // fsmi2c.trigger(CMD_REQUEST); // Please note this can trigger two different state changes!
+  fromking = CMD_REQUEST;
 }
 
 void receiveEvent(int numBytes) 
@@ -365,6 +367,8 @@ void setup() {
   Serial.begin(115200);           // start serial for output
 
   digitalWrite(messagesignal_pin, LOW);  
+  const char compile_date[] = __DATE__ " " __TIME__;
+  Serial.println(compile_date);
   Serial.println("\n\n---------------\nSetup complete. MessagePin set to low. Now waiting.");
 
   // Switching on
@@ -405,7 +409,14 @@ void loop() {
     }
     buttonPresses = 0;
   }
- 
+
+  // stupid hack! Something about the i2c interrupt cannot call fsm!??
+  if (fromking != 0) {
+    fsmi2c.trigger(CMD_REQUEST);
+    fromking = 0;
+    Serial.println("I2cRequest executed!");
+  }
+  /*
   if (c++ > 100) {
     toggle = !toggle;
     digitalWrite(led_pin, toggle);   // turn the LED on (HIGH is the voltage level)
@@ -422,6 +433,7 @@ void loop() {
     // Wire.write(c);              // sends one byte
     // Wire.endTransmission();    // stop transmitting
     c2 = 0;
-  }
+  } */
+  
 }
 

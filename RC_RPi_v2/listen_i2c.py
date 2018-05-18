@@ -86,7 +86,7 @@ class RPI_Controller(object):
             print("Here we will do some reporting! -------------------")
             time.sleep(5)
 
-	if self.todo_command == CMD_TODO_SHUTDOWN:
+        if self.todo_command == CMD_TODO_SHUTDOWN:
 	    print("Shutting down!")
             os.system("sudo shutdown -h now")
 
@@ -147,8 +147,9 @@ def readNumber():
     # try up to 3 times on a failure
     success = False
     caught_exception = None
-    for _ in range(10):
+    for _ in range(200):
         try:
+            print("Reading at:", slaveAddress)
             number=i2c.read_byte(slaveAddress)
             # if we get here, we succeeded, so break out of the loop
             success = True
@@ -156,10 +157,11 @@ def readNumber():
         except:
             print "error!"
             # wait a second for the retry
-            time.sleep(1)
+            time.sleep(0.1)
 
     if not success:
         print "Failed after X retries!"
+	number = -1
     print("Number was", number)
     return number
 
