@@ -81,13 +81,20 @@ void turnOnPi()
   }
 }
 
+void SignalNOMessageToPi()
+{
+  Serial.println("func:SignalNOMessageToPi");
+  digitalWrite(messagesignal_pin, LOW);  
+}
+
 void shutDownPi()
 {
   Serial.println("func:shutdownPi");
-  //TODO Use the SleepyPi2 lib to switch off
+  //Use the SleepyPi2 lib to switch off
   SleepyPi.enableExtPower(false);
   SleepyPi.enablePiPower(false);
   PiOn_flag = false;
+  SignalNOMessageToPi();
 }
 
 void SignalMessageToPi()
@@ -96,11 +103,6 @@ void SignalMessageToPi()
   digitalWrite(messagesignal_pin, HIGH);  
 }
 
-void SignalNOMessageToPi()
-{
-  Serial.println("func:SignalNOMessageToPi");
-  digitalWrite(messagesignal_pin, LOW);  
-}
 
 void errorMessage()
 {
@@ -272,7 +274,10 @@ void setupTransitions() {
   fsmi2c.add_transition(&state_i2c_readying, &state_i2c_confirming, CMD_RDY_RECEIVED, &i2c_readying_to_confirming);
   fsmi2c.add_transition(&state_i2c_confirming, &state_i2c_commanding, CMD_REQUEST, &i2c_confirming_to_commanding);
   fsmi2c.add_transition(&state_i2c_commanding, &state_i2c_waiting_pioff, CMD_OK_RECEIVED, &i2c_commanding_to_waiting);
-  // TODO add time transitions for timeouts!
+  fsmi2c.add_timed_transition(&state_i2c_commanding, &state_i2c_waiting_pioff, 20000, NULL);
+  fsmi2c.add_timed_transition(&state_i2c_confirming, &state_i2c_waiting_pioff, 20000, NULL);
+  fsmi2c.add_timed_transition(&state_i2c_readying, &state_i2c_waiting_pioff, 20000, NULL);
+  fsmi2c.add_timed_transition(&state_i2c_onning, &state_i2c_waiting_pioff, 20000, NULL);
 }
 
 #pragma endregion Transitions
@@ -416,24 +421,29 @@ void loop() {
     fromking = 0;
     Serial.println("I2cRequest executed!");
   }
-  /*
-  if (c++ > 100) {
+  
+  if (c++ > 300) {
     toggle = !toggle;
     digitalWrite(led_pin, toggle);   // turn the LED on (HIGH is the voltage level)
     c = 0;
   }
-  if (c2++ > 30000) {
+  if (c2++ > 10000) {
     Serial.print(".");
     pi_current = SleepyPi.rpiCurrent();
+    Serial.print("Stats: ");
     Serial.print(pi_current);
-    Serial.print(" mA        ");
+    Serial.print(" mA  ");
+    Serial.print(PiOn_flag);
+    Serial.print(" -> since ");
+    Serial.print(PiOn_time);
+    Serial.print(".  ");
     // Serial.print(c);
     // Wire.beginTransmission(7); // transmit to device #
     // Wire.write("c is ");        // sends five bytes
     // Wire.write(c);              // sends one byte
     // Wire.endTransmission();    // stop transmitting
     c2 = 0;
-  } */
+  } 
   
 }
 

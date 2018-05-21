@@ -63,6 +63,7 @@ class RPI_Controller(object):
                print("Efter pinlow")
                break
             time.sleep(0.1)
+        
         return
 
     def on_enter_state3(self):
@@ -80,17 +81,22 @@ class RPI_Controller(object):
         if self.todo_command == CMD_TODO_TRIGGER:
             print("Here we will play the SOUND AND BLINK THE LIGHTS -------------------")
             print("Now waiting 5 secs till finished!")
-            time.sleep(5)
+            time.sleep(5) ## This is pretending, please sound instead!
+            writeNumber(MSG_OK) ## this is the confirmation of all went ok!
 
         if self.todo_command == CMD_TODO_REPORT:
             print("Here we will do some reporting! -------------------")
             time.sleep(5)
+            writeNumber(MSG_OK) ## this is the confirmation of all went ok!
 
         if self.todo_command == CMD_TODO_SHUTDOWN:
-	    print("Shutting down!")
+            print("Shutting down!")
+            writeNumber(MSG_OK) ## this is the confirmation of all went ok!
+            time.sleep(0.1) ## polite waiting for Arduino to understand what we just said
+            ## Shut the shit down!
             os.system("sudo shutdown -h now")
 
-        writeNumber(MSG_OK) ## this is the confirmation of all went ok!
+        
         self.done()
         return
 
