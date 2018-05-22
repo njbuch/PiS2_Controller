@@ -103,20 +103,22 @@ void shutDownPi()
 int timeswithlowpower = 0;
 void verifyPiOnState() 
 {
-  /* unsigned long pi_current = 1000*SleepyPi.rpiCurrent();
-  current_readings.push(pi_current);
-  unsigned long avg = 0;
-	
-  /* for (unsigned int i = 0; i < current_readings.size(); i++) {
-			avg += current_readings[i] / current_readings.size();
-	} 
-  //Serial.print("The average power consumpt seen over a period is:");
-  //Serial.print(avg);
+  unsigned int pi_current = (unsigned int) SleepyPi.rpiCurrent();
+  // Serial.print(F("Reading power:"));
+  // Serial.println(pi_current);
+  // Serial.print(F("Reading power counter:"));
+  // Serial.println(timeswithlowpower);
   
-  if (avg < 130000 && current_readings.size() > 18 && PiOn_flag == true) {
-    //Serial.println("Now cutting power off, and setting state to off. Period.");
+  if (pi_current < 150) {
+    timeswithlowpower++;
+  } else {
+    timeswithlowpower = 0;
+  }
+  
+  if (timeswithlowpower > 20 && PiOn_flag == true) {
+    Serial.println(F("Now cutting power off, and setting state to off. Period."));
     shutDownPi();
-  } */
+  }
 }
 
 void SignalMessageToPi()
