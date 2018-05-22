@@ -17,6 +17,8 @@
 #include <PCF8523.h>
 #include <Wire.h>
 
+#define CIRCULAR_BUFFER_XS
+#include <CircularBuffer.h>
 
 static char c = '0';
 // Pin 13 has an LED connected on most Arduino boards. 
@@ -61,9 +63,9 @@ unsigned long PiOn_time = 0;
 void turnOnPi()
 {
   float pi_current;
-  Serial.println("func:turnOnPi");
+  Serial.println(F("func:turnOnPi"));
   if (!PiOn_flag) {
-    Serial.println("Now switching on power to RPi!\n");
+    Serial.println(F("Now switching on power to RPi!\n"));
     SleepyPi.enableExtPower(true);
     SleepyPi.enablePiPower(true);
     PiOn_time = millis();
@@ -72,7 +74,7 @@ void turnOnPi()
     pi_current = SleepyPi.rpiCurrent();
     // Assuming that something is rotten if there is a power-consumption on less than 10mA
     if (pi_current > 10) {
-      Serial.println("RPi should already be switched on but does not use any power, trying to switch on!");
+      Serial.println(F("RPi should already be switched on but does not use any power, trying to switch on!"));
       SleepyPi.enableExtPower(true);
       SleepyPi.enablePiPower(true);
       PiOn_time = millis();
@@ -83,13 +85,13 @@ void turnOnPi()
 
 void SignalNOMessageToPi()
 {
-  Serial.println("func:SignalNOMessageToPi");
+  Serial.println(F("func:SignalNOMessageToPi"));
   digitalWrite(messagesignal_pin, LOW);  
 }
 
 void shutDownPi()
 {
-  Serial.println("func:shutdownPi");
+  Serial.println(F("func:shutdownPi"));
   //Use the SleepyPi2 lib to switch off
   SleepyPi.enableExtPower(false);
   SleepyPi.enablePiPower(false);
@@ -97,21 +99,40 @@ void shutDownPi()
   SignalNOMessageToPi();
 }
 
+
+int timeswithlowpower = 0;
+void verifyPiOnState() 
+{
+  /* unsigned long pi_current = 1000*SleepyPi.rpiCurrent();
+  current_readings.push(pi_current);
+  unsigned long avg = 0;
+	
+  /* for (unsigned int i = 0; i < current_readings.size(); i++) {
+			avg += current_readings[i] / current_readings.size();
+	} 
+  //Serial.print("The average power consumpt seen over a period is:");
+  //Serial.print(avg);
+  
+  if (avg < 130000 && current_readings.size() > 18 && PiOn_flag == true) {
+    //Serial.println("Now cutting power off, and setting state to off. Period.");
+    shutDownPi();
+  } */
+}
+
 void SignalMessageToPi()
 {
-  Serial.println("func:SignalMessageToPi");
+  Serial.println(F("func:SignalMessageToPi"));
   digitalWrite(messagesignal_pin, HIGH);  
 }
 
-
 void errorMessage()
 {
-  Serial.println("In a bad error-state. RPI not responding.");
+  Serial.println(F("In a bad error-state. RPI not responding."));
 }
 
 void GPIO_Trigger()
 {
-  Serial.println("func:GPIO_Trigger");
+  Serial.println(F("func:GPIO_Trigger"));
 }
 
 #pragma endregion
@@ -119,18 +140,18 @@ void GPIO_Trigger()
 
 #pragma region States
 // Primary controller states
-State state_contr_waiting(NULL, NULL, NULL);
-State state_contr_waitfortriggerack(NULL, NULL, NULL);
-State state_contr_rpinotworking(NULL, NULL, NULL);
-State state_contr_waitforshutdown(NULL, NULL, NULL);
+State state_contr_waiting(1, NULL, NULL, NULL);
+State state_contr_waitfortriggerack(2, NULL, NULL, NULL);
+State state_contr_rpinotworking(3, NULL, NULL, NULL);
+State state_contr_waitforshutdown(4, NULL, NULL, NULL);
 Fsm fsm(&state_contr_waiting);
 
 // I2C protocol communication states
-State state_i2c_onning(NULL, NULL, NULL);
-State state_i2c_readying(NULL, NULL, NULL);
-State state_i2c_confirming(NULL, NULL, NULL);
-State state_i2c_commanding(NULL, NULL, NULL);
-State state_i2c_waiting_pioff(NULL, NULL, NULL);
+State state_i2c_onning(10, NULL, NULL, NULL);
+State state_i2c_readying(11, NULL, NULL, NULL);
+State state_i2c_confirming(12, NULL, NULL, NULL);
+State state_i2c_commanding(13, NULL, NULL, NULL);
+State state_i2c_waiting_pioff(14, NULL, NULL, NULL);
 Fsm fsmi2c(&state_i2c_waiting_pioff);
 
 #pragma endregion
@@ -141,54 +162,54 @@ Fsm fsmi2c(&state_i2c_waiting_pioff);
 
 void I2C_TrigAck_Rcv()
 {
-  Serial.println("func:I2C_TrigAck_Rcv");
+  Serial.println(F("func:I2C_TrigAck_Rcv"));
 }
 
 void I2C_RepAck_Rcv()
 {
-  Serial.println("func:I2C_RepAck_Rcv");
+  Serial.println(F("func:I2C_RepAck_Rcv"));
 }
 
 void I2C_RepDone_Rcv()
 {
-  Serial.println("func:I2C_RepDone_Rcv");
+  Serial.println(F("func:I2C_RepDone_Rcv"));
 }
 
 ////////////////////////
 // I2C Transition functions
 void i2c_waiting_to_onning()
 {
-   Serial.println("\n\nTransition:i2c_waiting_to_onning.\n");
+   Serial.println(F("\n\nTransition:i2c_waiting_to_onning.\n"));
    SignalMessageToPi();
    QuickReply = MSG_READY;
-   Serial.println("MessagePin set to high. Hoping for a i2c read request.\n");
+   Serial.println(F("MessagePin set to high. Hoping for a i2c read request.\n"));
 }
 
 void i2c_onning_to_readying()
 {
    //Wire.write(MSG_READY);
-   Serial.println("\n\nTransition:i2c_onning_to_readying. Now sent MSG_READY!\n");
+   Serial.println(F("\n\nTransition:i2c_onning_to_readying. Now sent MSG_READY!\n"));
 }
 
 void i2c_readying_to_confirming()
 {
-   Serial.println("\n\nTransition:i2c_readying_to_confirming.\n");
+   Serial.println(F("\n\nTransition:i2c_readying_to_confirming.\n"));
    QuickReply = CmdToSend;
    digitalWrite(messagesignal_pin, LOW);  
-   Serial.println("MessagePin set to LOW. Hoping for a i2c read request again.\n");
+   Serial.println(F("MessagePin set to LOW. Hoping for a i2c read request again.\n"));
 }
 
 void i2c_confirming_to_commanding()
 {
    // Wire.write(CmdToSend);
-   Serial.println("\n\nTransition:i2c_confirming_to_commanding.\n");
-   Serial.print("\nNow sent:");
+   Serial.println(F("\n\nTransition:i2c_confirming_to_commanding.\n"));
+   Serial.print(F("\nNow sent:"));
    Serial.print(CmdToSend);
 }
 
 void i2c_commanding_to_waiting()
 {
-   Serial.println("\n\nTransition:i2c_commanding_to_waiting.\n");
+   Serial.println(F("\n\nTransition:i2c_commanding_to_waiting.\n"));
    fsm.trigger( CONTR_I2C_TRIGDONE_RCV);
 }
 
@@ -199,7 +220,7 @@ void i2c_commanding_to_waiting()
 // Controller transition functions
 void contr_waiting_to_waitfortriggerack()
 {
-   Serial.println("\n\nTranisition:contr_waiting_to_waitfortriggerack.\n");
+   Serial.println(F("\n\nTranisition:contr_waiting_to_waitfortriggerack.\n"));
    turnOnPi();
    CmdToSend = MSG_TODO_TRIGGER;
    fsmi2c.trigger(CMD_SEND_MESSAGE);
@@ -208,9 +229,9 @@ void contr_waiting_to_waitfortriggerack()
 int triggerackwaits = 0;
 void contr_waitfortriggerack_to_waitfortriggerack()
 {
-   Serial.println("\n\nTranisition:contr_waitfortriggerack_to_waitfortriggerack.\n");
+   Serial.println(F("\n\nTranisition:contr_waitfortriggerack_to_waitfortriggerack.\n"));
    if (triggerackwaits++ > 10) {
-    Serial.print("\nKept waiting for RPi too long. Returning to wait.");
+    Serial.print(F("\nKept waiting for RPi too long. Returning to wait."));
     triggerackwaits = 0;
     fsm.trigger(CONTR_TIMEOUT);
   }
@@ -218,33 +239,33 @@ void contr_waitfortriggerack_to_waitfortriggerack()
 
 void contr_waitfortriggerack_to_rpinotworking()
 {
-   Serial.println("\n\nTranisition:contr_waitfortriggerack_to_rpinotworking.\n");
+   Serial.println(F("\n\nTranisition:contr_waitfortriggerack_to_rpinotworking.\n"));
 }
 
 void contr_rpinotworking_to_waiting()
 {
-   Serial.println("\n\nTranisition:contr_rpinotworking_to_waiting.... LETS TRY AGAIN :) \n");
+   Serial.println(F("\n\nTranisition:contr_rpinotworking_to_waiting.... LETS TRY AGAIN :) \n"));
 }
 
 void contr_waitfortriggerack_to_waitforsoundplaying()
 {
-   Serial.println("\n\nTranisition:contr_waitfortriggerack_to_waitforsoundplaying.\n");
+   Serial.println(F("\n\nTranisition:contr_waitfortriggerack_to_waitforsoundplaying.\n"));
 }
 
 void contr_waitfortriggerack_to_waiting()
 {
-   Serial.println("\n\nTranisition:contr_waitfortriggerack_to_waiting.\n");
+   Serial.println(F("\n\nTranisition:contr_waitfortriggerack_to_waiting.\n"));
 }
 
 void contr_waitforshutdown_to_waiting()
 {
-   Serial.println("\n\nTranisition:contr_waitforshutdown_to_waiting.\n");
+   Serial.println(F("\n\nTranisition:contr_waitforshutdown_to_waiting.\n"));
    shutDownPi();
 }
 
 void contr_waiting_to_waitforshutdown()
 {
-  Serial.println("\n\nTranisition:contr_waiting_to_waitforshutdown.\n");
+  Serial.println(F("\n\nTranisition:contr_waiting_to_waitforshutdown.\n"));
   CmdToSend = MSG_TODO_SHUTDOWN;
   fsmi2c.trigger(CMD_SEND_MESSAGE);
 }
@@ -294,21 +315,21 @@ void requestEvent()
   Wire.write(QuickReply);
   // Wire.write((uint8_t)22);
   // delay(500);
-  // Serial.print("requestEvent triggerede by I2C comms...:");
-  // Serial.println(QuickReply);
+  // Serial.print(F("requestEvent triggerede by I2C comms...:");
+  // Serial.println(F(QuickReply);
   // fsmi2c.trigger(CMD_REQUEST); // Please note this can trigger two different state changes!
   fromking = CMD_REQUEST;
 }
 
 void receiveEvent(int numBytes) 
 {
-  Serial.print("receiveEvent:");
+  Serial.print(F("receiveEvent:"));
   Serial.print(numBytes);
   while (1 < Wire.available()) { // loop through all but the last
      int code = Wire.read(); // receive byte as a character
      Serial.print(code);         // print the character
      }
-  Serial.print(":");
+  Serial.print(F(":"));
   int inByte = Wire.read();    // receive byte as an integer
   Serial.println(inByte);
   switch (inByte) {
@@ -316,7 +337,7 @@ void receiveEvent(int numBytes)
       fsmi2c.trigger(CMD_RDY_RECEIVED);
       break;
     case MSG_OK:
-      Serial.print("OK received, now relax!");
+      Serial.print(F("OK received, now relax!"));
       fsmi2c.trigger(CMD_OK_RECEIVED);
       break;
     default:
@@ -344,7 +365,7 @@ void button_isr()
     buttonPresses++;
     if (buttonPresses == 4) buttonPresses = 0;         // rollover every fourth press
     lastpress_time = millis();  
-    Serial.print("Press:");
+    Serial.print(F("Press:"));
     Serial.println(buttonPresses);
   }
 }
@@ -354,7 +375,10 @@ void button_isr()
 
 // the setup routine runs once when you press reset:
 void setup() {
-
+  Serial.begin(115200);           // start serial for output
+  Serial.println(F("Setup beginning..."));
+  delay(1000);
+  
   setupTransitions();
 
   // Allow wake up triggered by button press
@@ -368,25 +392,27 @@ void setup() {
   Wire.begin(7);                // join i2c bus with address #7 
   Wire.onRequest(requestEvent); // register event 
   Wire.onReceive(receiveEvent);
- 
-  Serial.begin(115200);           // start serial for output
+
+
 
   digitalWrite(messagesignal_pin, LOW);  
   const char compile_date[] = __DATE__ " " __TIME__;
   Serial.println(compile_date);
-  Serial.println("\n\n---------------\nSetup complete. MessagePin set to low. Now waiting.");
-
-  // Switching on
+    // Switching on
   PiOn_flag = true;
   SleepyPi.enablePiPower(true);  
   SleepyPi.enableExtPower(true);
+  
+  Serial.println(F("\n\n---------------\nSetup complete. MessagePin set to low. Now waiting."));
+
+
 }
 
 // the loop routine runs over and over again forever:
 int c2 = 0;
 bool toggle = true;
 float  pi_current; 
-
+unsigned long verifytime = 0;
 void loop() {
   fsm.run_machine();
   fsmi2c.run_machine();
@@ -395,22 +421,22 @@ void loop() {
   if ((buttonPresses > 0) && ((millis() - lastpress_time) > 1000)) {
     switch (buttonPresses) {
       case 1:
-        Serial.println("1 button press, fire!");
+        Serial.println(F("1 button press, fire!"));
         fsm.trigger(CONTR_GPIO_TRIGGER);
         // statements
         break;
       case 2:
         // statements
-        Serial.println("2 button press, fire!");
+        Serial.println(F("2 button press, fire!"));
         fsm.trigger(CONTR_GPIO_BUTTON);
         break;
       case 3:
         // statements
-        Serial.println("3 button press, fire!");
+        Serial.println(F("3 button press, fire!"));
         break;
       default:
         // statements
-        Serial.println("Weird button press, fire!");
+        Serial.println(F("Weird button press, fire!"));
     }
     buttonPresses = 0;
   }
@@ -419,24 +445,33 @@ void loop() {
   if (fromking != 0) {
     fsmi2c.trigger(CMD_REQUEST);
     fromking = 0;
-    Serial.println("I2cRequest executed!");
+    Serial.println(F("I2cRequest executed!"));
   }
+
+
+  if (millis() - verifytime >= 500) {
+		verifytime = millis();
+		verifyPiOnState();
+	}  
   
   if (c++ > 300) {
     toggle = !toggle;
     digitalWrite(led_pin, toggle);   // turn the LED on (HIGH is the voltage level)
     c = 0;
   }
-  if (c2++ > 10000) {
-    Serial.print(".");
+  if (c2++ > 20000) {
+    Serial.print(F("State controller: "));
+    Serial.print(fsm.current_state_name());
+    Serial.print(F("     State i2c: "));
+    Serial.print(fsmi2c.current_state_name());
     pi_current = SleepyPi.rpiCurrent();
-    Serial.print("Stats: ");
+    Serial.print(F("  Data: "));
     Serial.print(pi_current);
-    Serial.print(" mA  ");
+    Serial.print(F(" mA  "));
     Serial.print(PiOn_flag);
-    Serial.print(" -> since ");
+    Serial.print(F(" -> since "));
     Serial.print(PiOn_time);
-    Serial.print(".  ");
+    Serial.println(F(".  "));
     // Serial.print(c);
     // Wire.beginTransmission(7); // transmit to device #
     // Wire.write("c is ");        // sends five bytes
